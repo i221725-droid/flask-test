@@ -1,77 +1,55 @@
 pipeline {
     agent any
     
-    environment {
-        PYTHON_DIR = "${WORKSPACE}/.python"
-        PATH = "${env.PYTHON_DIR}/bin:${env.PATH}"
-    }
-    
     stages {
-        stage('Checkout') {
+        stage('Check Environment') {
             steps {
-                checkout scm
                 sh '''
-                    echo "=== Starting Pipeline ==="
-                    echo "Workspace: ${WORKSPACE}"
+                    echo "=== Environment Check ==="
                     echo "User: $(whoami)"
+                    echo "Workspace: $WORKSPACE"
+                    echo ""
+                    echo "Python availability:"
+                    python3 --version
+                    python --version
+                    pip3 --version || pip --version || echo "Pip not found, will install"
+                    echo ""
+                    echo "Files in workspace:"
                     ls -la
                 '''
             }
         }
         
-        stage('Setup Portable Python') {
+        stage('Install Pip if missing') {
             steps {
                 sh '''
-                    echo "=== Setting up Python ==="
+                    echo "=== Setting up Pip ==="
                     
-                    # Check if Python is already available
-                    if python3 --version 2>/dev/null; then
-                        echo "Python3 is already available"
-                        exit 0
+                    # Check if pip is available
+                    if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
+                        echo "Pip not found, installing..."
+                        
+                        # Use get-pip.py that's already in your workspace!
+                        echo "Using get-pip.py from workspace..."
+                        python3 get-pip.py
+                    else
+                        echo "Pip is already available"
                     fi
                     
-                    # Create Python directory
-                    mkdir -p ${PYTHON_DIR}
-                    cd ${PYTHON_DIR}
-                    
-                    echo "Downloading Miniconda (portable Python distribution)..."
-                    
-                    # Download Miniconda (self-contained Python)
-                    wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.12.0-Linux-x86_64.sh -O miniconda.sh
-                    
-                    # Install Miniconda silently
-                    bash miniconda.sh -b -p ${PYTHON_DIR}/miniconda
-                    
-                    # Set up environment
-                    export PATH="${PYTHON_DIR}/miniconda/bin:$PATH"
-                    
-                    echo "Verifying installation..."
-                    ${PYTHON_DIR}/miniconda/bin/python --version
-                    ${PYTHON_DIR}/miniconda/bin/pip --version
-                    
-                    # Create symlinks for easier access
-                    ln -sf ${PYTHON_DIR}/miniconda/bin/python ${PYTHON_DIR}/bin/python
-                    ln -sf ${PYTHON_DIR}/miniconda/bin/python3 ${PYTHON_DIR}/bin/python3
-                    ln -sf ${PYTHON_DIR}/miniconda/bin/pip ${PYTHON_DIR}/bin/pip
-                    ln -sf ${PYTHON_DIR}/miniconda/bin/pip3 ${PYTHON_DIR}/bin/pip3
-                    
-                    echo "Python setup complete!"
+                    # Verify
+                    pip3 --version || pip --version
                 '''
             }
         }
         
-        stage('Build Application') {
+        stage('Install Requirements') {
             steps {
                 sh '''
-                    echo "=== Building Flask Application ==="
+                    echo "=== Installing Requirements ==="
                     
-                    # Use our portable Python
-                    python --version
-                    pip --version
-                    
-                    echo "Installing dependencies..."
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
+                    # Use python3 for consistency
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install -r requirements.txt
                     
                     echo "Dependencies installed successfully!"
                 '''
@@ -83,13 +61,9 @@ pipeline {
                 sh '''
                     echo "=== Running Tests ==="
                     
-                    # Install pytest
-                    pip install pytest
-                    
-                    echo "Running test suite..."
-                    python -m pytest test.py -v --tb=short || echo "Tests completed"
-                    
-                    echo "Test stage complete!"
+                    python3 -m pip install pytest
+                    echo "Running pytest..."
+                    python3 -m pytest test.py -v || echo "Tests completed"
                 '''
             }
         }
@@ -99,33 +73,36 @@ pipeline {
                 sh '''
                     echo "=== Starting Flask Application ==="
                     
-                    # Kill any existing Flask processes
+                    # Kill any existing Flask app
                     pkill -f "python.*app.py" 2>/dev/null || true
                     sleep 2
                     
-                    echo "Starting application..."
-                    # Start Flask app in background
-                    nohup python app.py > app.log 2>&1 &
-                    APP_PID=$!
+                    echo "Starting app..."
+                    cd $WORKSPACE
                     
-                    echo "Application started with PID: $APP_PID"
-                    echo "Waiting for application to start..."
+                    # Start Flask app in background
+                    nohup python3 app.py > flask_output.log 2>&1 &
+                    APP_PID=$!
+                    echo "Application PID: $APP_PID"
+                    
+                    # Wait for app to start
+                    echo "Waiting for app to start..."
                     sleep 5
                     
-                    echo "Testing application endpoint..."
-                    if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:5000; then
-                        echo "✅ SUCCESS: Flask application is running!"
-                        echo "Response from application:"
-                        curl -s http://localhost:5000 | head -3
+                    # Check if app is running
+                    echo "Testing application..."
+                    if curl -f -s http://localhost:5000 > /dev/null; then
+                        echo "✅ SUCCESS: Flask app is running!"
+                        echo "Response from http://localhost:5000:"
+                        curl -s http://localhost:5000 | head -5
                     else
-                        echo "⚠️  WARNING: Could not connect to application"
-                        echo "Checking application logs..."
-                        tail -20 app.log
-                        echo "Checking if process is still running..."
+                        echo "⚠️  Could not connect to app, checking logs..."
+                        echo "Last 10 lines of log:"
+                        tail -10 flask_output.log
+                        echo ""
+                        echo "Checking if process is alive:"
                         ps -p $APP_PID && echo "Process is running" || echo "Process died"
                     fi
-                    
-                    echo "Application URL: http://localhost:5000"
                 '''
             }
         }
@@ -133,18 +110,20 @@ pipeline {
     
     post {
         always {
-            echo "=== Pipeline Cleanup ==="
+            echo "=== Cleanup ==="
             sh '''
                 echo "Stopping Flask application..."
                 pkill -f "python.*app.py" 2>/dev/null || true
-                echo "Cleaning up..."
-                rm -rf ${PYTHON_DIR} 2>/dev/null || true
-                echo "Cleanup complete!"
+                sleep 2
+                
+                echo "Application stopped."
+                echo "Final Python processes:"
+                ps aux | grep python | grep -v grep || true
             '''
         }
         
         success {
-            echo "✅ Pipeline completed successfully!"
+            echo "🎉 Pipeline completed successfully!"
         }
         
         failure {
