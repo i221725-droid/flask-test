@@ -25,7 +25,7 @@ pipeline {
         // Stage 1: Clone Repository
         stage('Clone Repository') {
             agent {
-                dockerContainerContainer {
+                dockerContainer {
                     image 'alpine/git:latest'
                     args '-v /tmp:/tmp'
                     reuseNode true
@@ -58,7 +58,7 @@ pipeline {
         // Stage 2: Install Dependencies
         stage('Install Dependencies') {
             agent {
-                dockerContainerContainer {
+                dockerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
@@ -91,7 +91,7 @@ pipeline {
         // Stage 3: Run Unit Tests
         stage('Run Unit Tests') {
             agent {
-                dockerContainerContainer {
+                dockerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
@@ -132,7 +132,7 @@ pipeline {
         // Stage 4: Build Application
         stage('Build Application') {
             agent {
-                dockerContainerContainer {
+                dockerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
