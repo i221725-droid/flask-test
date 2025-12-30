@@ -25,7 +25,7 @@ pipeline {
         // Stage 1: Clone Repository
         stage('Clone Repository') {
             agent {
-                docker {
+                dockerContainerContainer {
                     image 'alpine/git:latest'
                     args '-v /tmp:/tmp'
                     reuseNode true
@@ -58,7 +58,7 @@ pipeline {
         // Stage 2: Install Dependencies
         stage('Install Dependencies') {
             agent {
-                docker {
+                dockerContainerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
@@ -91,7 +91,7 @@ pipeline {
         // Stage 3: Run Unit Tests
         stage('Run Unit Tests') {
             agent {
-                docker {
+                dockerContainerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
@@ -132,7 +132,7 @@ pipeline {
         // Stage 4: Build Application
         stage('Build Application') {
             agent {
-                docker {
+                dockerContainerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH}"
                     reuseNode true
@@ -194,7 +194,7 @@ print('Static exists:', os.path.exists('static'))
         // Stage 5: Deploy Application
         stage('Deploy Application') {
             agent {
-                docker {
+                dockerContainer {
                     image "${DOCKER_IMAGE}"
                     args "-v ${WORKSPACE}:${WORKSPACE_PATH} -w ${WORKSPACE_PATH} -p ${params.DEPLOY_PORT}:${params.DEPLOY_PORT}"
                     reuseNode true
@@ -250,15 +250,15 @@ CMD ["sh", "-c", ". venv/bin/activate && python app.py --port=${DEPLOY_PORT}"]
 EOF
                         
                         # Build and tag the Docker image
-                        docker build -t ${APP_NAME}:${BUILD_ID} .
+                        dockerContainer build -t ${APP_NAME}:${BUILD_ID} .
                         
                         # Run the container
-                        docker run -d -p ${DEPLOY_PORT}:${DEPLOY_PORT} \\
+                        dockerContainer run -d -p ${DEPLOY_PORT}:${DEPLOY_PORT} \\
                             --name ${APP_NAME}-${BUILD_ID} \\
                             ${APP_NAME}:${BUILD_ID}
                         
                         echo "✅ Docker container deployed"
-                        docker ps | grep ${APP_NAME}
+                        dockerContainer ps | grep ${APP_NAME}
                     '''
                 }
             }
@@ -275,8 +275,8 @@ EOF
                             rm -f flask.pid
                         fi
                         # Stop and remove Docker container
-                        docker stop ${APP_NAME}-${BUILD_ID} 2>/dev/null || true
-                        docker rm ${APP_NAME}-${BUILD_ID} 2>/dev/null || true
+                        dockerContainer stop ${APP_NAME}-${BUILD_ID} 2>/dev/null || true
+                        dockerContainer rm ${APP_NAME}-${BUILD_ID} 2>/dev/null || true
                     '''
                 }
             }
