@@ -1,7 +1,7 @@
 pipeline {
     agent {
         docker {
-            image 'python:3.9-alpine'  # Lightweight Python Docker image
+            image 'python:3.9-alpine'
             args '-u root:root'  // Run as root to avoid permission issues
             reuseNode true  // Reuse the current Jenkins agent
         }
